@@ -14,6 +14,9 @@ earnings agent "John" (Johnson John Codes Openez) that runs on a VM.
   - Brain says `needs_agent` → append to `agent-requests.jsonl`, ping webhook;
     sender is told John will pick it up on his next poll.
   - Every message logged to `inbox.jsonl`.
+  - Attachments on DMs/mentions are downloaded (bot-token-authed), text-ish
+    files (csv/json/text) inlined into the log records, binaries saved to
+    /tmp/opencode/attachments/, and file names appended to the brain prompt.
   - Localhost HTTP API on 127.0.0.1:8757 (VM-local):
     - `POST /msg {channelId, content}` — send a text message as the bot
     - `POST /img {channelId, image, caption?}` — send an image as the bot

@@ -42,6 +42,36 @@ if (!BRAIN_SECRET) {
   process.exit(2)
 }
 
+// Download attached files (text/csv/json) so John actually receives user data.
+// Discord CDN URLs for private channels require the bot token as auth.
+async function captureAttachments(attachments) {
+  const out = []
+  if (!attachments || !attachments.size) return out
+  for (const a of attachments.values()) {
+    const rec = { name: a.name, contentType: a.contentType || null, size: a.size }
+    try {
+      const r = await fetch(a.url, { headers: { Authorization: 'Bot ' + TOKEN } })
+      if (r.ok) {
+        const buf = Buffer.from(await r.arrayBuffer())
+        const texty = /(csv|text|json|tsv|log|md|txt|html|xml)/i.test(rec.contentType || '')
+        if (texty && buf.length <= 200 * 1024) {
+          rec.text = buf.toString('utf8').slice(0, 200000)
+        } else {
+          rec.saved = `/tmp/opencode/attachments/${Date.now()}-${a.name.replace(/[^\w.-]/g, '_')}`
+          fs.mkdirSync('/tmp/opencode/attachments', { recursive: true })
+          fs.writeFileSync(rec.saved, buf)
+        }
+      } else {
+        rec.err = 'fetch ' + r.status
+      }
+    } catch (e) {
+      rec.err = String(e.message || e)
+    }
+    out.push(rec)
+  }
+  return out
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -289,9 +319,13 @@ client.on('messageCreate', async (msg) => {
     }
   }
   startTyping()
+  const atts = await captureAttachments(msg.attachments)
+  const attNote = atts.length
+    ? ' [files attached: ' + atts.map((a) => a.name + (a.text ? ` (${a.text.length} chars)` : ' (binary)')).join(', ') + ']'
+    : ''
   let brain
   try {
-    brain = await askBrain(clean)
+    brain = await askBrain(clean + attNote)
   } catch (e) {
     log('brain err: ' + e.message)
     brain = null
@@ -306,6 +340,7 @@ client.on('messageCreate', async (msg) => {
     guildId: msg.guild?.id || null,
     isDM,
     content: clean,
+    attachments: atts,
     brainReply: brain ? brain.reply : null,
     brainErr: brain ? null : 'brain unavailable',
   })
@@ -321,6 +356,7 @@ client.on('messageCreate', async (msg) => {
       msgId: msg.id,
       task: brain.agent_task || clean.slice(0, 200),
       content: clean,
+      attachments: atts,
     })
     ping(`[agent-request] from ${msg.author.username}: ${(brain.agent_task || clean).slice(0, 120)} - John must act`)
   }
