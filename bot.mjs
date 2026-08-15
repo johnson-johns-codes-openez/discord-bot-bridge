@@ -254,7 +254,26 @@ client.on('messageCreate', async (msg) => {
     return
   }
 
-  // Route to the brain worker.
+  // Route to the brain worker (with a typing indicator so the sender knows
+  // we're working on it).
+  let typingTimer = null
+  const startTyping = () => {
+    try {
+      msg.channel.sendTyping().catch(() => {})
+      typingTimer = setInterval(() => {
+        msg.channel.sendTyping().catch(() => {})
+      }, 8000)
+    } catch {
+      /* typing is best-effort */
+    }
+  }
+  const stopTyping = () => {
+    if (typingTimer) {
+      clearInterval(typingTimer)
+      typingTimer = null
+    }
+  }
+  startTyping()
   let brain
   try {
     brain = await askBrain(clean)
@@ -299,6 +318,8 @@ client.on('messageCreate', async (msg) => {
     }
   } catch (e) {
     log('brain-reply err: ' + e.message)
+  } finally {
+    stopTyping()
   }
 })
 

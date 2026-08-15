@@ -31,6 +31,7 @@ const client = new Client({
 client.on('ready', async () => {
   try {
     const ch = await client.channels.fetch(channelId)
+    ch.sendTyping().catch(() => {}) // typing indicator while the agent's reply is prepared
     if (msgIdArg && msgIdArg !== '-') {
       const m = await ch.messages.fetch(msgIdArg)
       await m.reply(text.slice(0, 2000))
