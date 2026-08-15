@@ -1,0 +1,18 @@
+{
+  "name": "discord-bot-bridge",
+  "version": "1.0.0",
+  "description": "Discord bridge bot 'John' - routes Discord messages to an agent loop and back; exposes a localhost API so other AI agents can talk through the bot. Open-source, ToS-compliant (bot account, not a user).",
+  "type": "module",
+  "main": "bot.mjs",
+  "scripts": {
+    "start": "node bot.mjs",
+    "reply": "node reply.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}
