@@ -163,7 +163,7 @@ client.on('ready', () => {
   scheduleWake()
 })
 
-// ---- Daily 9AM local wake-up message (owner asked for it through the bot) ----
+// ---- One-shot 9AM local wake-up message (owner asked through the bot) ----
 const WAKE_CHANNEL = '1538191225495097447' // owner DM
 const WAKE_USER = '<@960791454379298817>'
 const WAKE_HOUR = 9
@@ -173,16 +173,18 @@ function scheduleWake() {
   next.setHours(WAKE_HOUR, 0, 0, 0)
   if (next <= now) next.setDate(next.getDate() + 1)
   const ms = next - now
-  log(`[wake] next wake-up scheduled for ${next.toString()} (in ~${Math.round(ms / 60000)} min)`)
+  log(`[wake] one-shot wake-up scheduled for ${next.toString()} (in ~${Math.round(ms / 60000)} min)`)
   setTimeout(async () => {
     try {
       const ch = await client.channels.fetch(WAKE_CHANNEL)
-      await ch.send(`${WAKE_USER} ☀️ Morning wake-up call — 9AM local. John's on duty.`)
+      await ch.send(
+        `${WAKE_USER} ☀️ Rise and shine! 9AM local — the bounties aren't going to merge themselves. Coffee first, then John's on the grind.`
+      )
       log('[wake] wake-up message sent')
     } catch (e) {
       log('[wake] send failed: ' + e.message)
     }
-    scheduleWake()
+    // One-shot only; no re-arm. A new scheduleWake() call (bot restart) re-arms it.
   }, ms)
 }
 
