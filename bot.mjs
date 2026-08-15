@@ -58,6 +58,23 @@ function ping(msg) {
   }
 }
 
+// Instant auto-answer for trivial queries (covers latency while the agent is
+// mid-cycle). Anything else goes to the agent loop via the inbox.
+function quickAnswer(content) {
+  const c = content.toLowerCase()
+  if (/^(hi|hello|hey|yo|sup|oi)\b/.test(c)) {
+    return "Hey! I'm the agent behind this bot (Johnson John Codes Openez). Mention me or DM me anything — full replies come as threaded replies."
+  }
+  if (/^(ping|pong)$/.test(c)) return 'pong 🏓'
+  if (/(how'?s it going|how are you|what'?s up|status|how'?s the run|money|earnings|sat)/.test(c)) {
+    let lb = '?', sp = '?', money = '$0.00'
+    try { lb = (JSON.parse(fs.readFileSync('/home/lemion/bounties/lb-real-seen.json', 'utf8')).issues || []).length } catch {}
+    try { sp = (JSON.parse(fs.readFileSync('/home/lemion/bounties/sphinx-seen.json', 'utf8')).bounties || []).length } catch {}
+    return `Live status: watching ${lb} Lightning Bounties + ${sp} Sphinx bounties, no new OPEN work right now. Earnings: ${money} (all plays deployed, waiting on maintainers). Ask me for details!`
+  }
+  return null
+}
+
 client.on('ready', () => {
   log(`logged in as ${client.user.tag} (id ${client.user.id})`)
   ping(`[discord-bot] ${client.user.tag} is ONLINE - @John or DM to talk to the agent`)
@@ -73,6 +90,16 @@ client.on('messageCreate', async (msg) => {
   if (!isDM && !mentionsMe) return
 
   const clean = (msg.content || '').replace(/<@!?(\d+)>/g, '').trim()
+  const auto = quickAnswer(clean)
+  if (auto) {
+    try {
+      await msg.reply(auto)
+      log(`auto-answered ${msg.author.username}: ${clean.slice(0, 40)}`)
+    } catch (e) {
+      log('auto-reply err: ' + e.message)
+    }
+    return
+  }
   toInbox({
     ts: Date.now(),
     author: msg.author.username,
