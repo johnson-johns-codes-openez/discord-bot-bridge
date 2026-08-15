@@ -133,7 +133,7 @@ function signals() {
       let canon = data.toString()
       try {
         const parsed = JSON.parse(canon)
-        for (const k of ['lastSignal', 'lastRun', 'lastCheck', 'updated', 'ts']) {
+        for (const k of ['lastSignal', 'lastRun', 'lastCheck', 'updated', 'ts', 'lastSeen', 'firstSeen']) {
           if (k in parsed) delete parsed[k]
         }
         canon = JSON.stringify(parsed)
