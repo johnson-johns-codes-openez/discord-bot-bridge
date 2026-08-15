@@ -129,14 +129,25 @@ function signals() {
   for (const f of FEEDS) {
     try {
       const data = fs.readFileSync(f)
-      // Hash content, ignoring timestamp bookkeeping that changes every write
+      // Hash content, ignoring timestamp bookkeeping that changes every write.
+      // For the Lightning-Bounties real list, hash only the issue KEY SET: the
+      // watcher re-queries 'real' amounts every 30m cycle and they fluctuate
+      // (transient writes during the refresh also occur), but a NEW issue key
+      // is the only thing that needs the agent. Sphinx/agent-feed keep the full
+      // stripped hash (status changes there are meaningful).
       let canon = data.toString()
       try {
         const parsed = JSON.parse(canon)
-        for (const k of ['lastSignal', 'lastRun', 'lastCheck', 'updated', 'ts', 'lastSeen', 'firstSeen']) {
-          if (k in parsed) delete parsed[k]
+        if (f.endsWith('lb-real-seen.json')) {
+          canon = JSON.stringify(
+            Object.keys(parsed.issues || {}).sort()
+          )
+        } else {
+          for (const k of ['lastSignal', 'lastRun', 'lastCheck', 'updated', 'ts', 'lastSeen', 'firstSeen']) {
+            if (k in parsed) delete parsed[k]
+          }
+          canon = JSON.stringify(parsed)
         }
-        canon = JSON.stringify(parsed)
       } catch {
         /* not JSON - hash raw */
       }
