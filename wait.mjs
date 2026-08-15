@@ -133,7 +133,9 @@ function signals() {
       // For the Lightning-Bounties real list, hash only the issue KEY SET: the
       // watcher re-queries 'real' amounts every 30m cycle and they fluctuate
       // (transient writes during the refresh also occur), but a NEW issue key
-      // is the only thing that needs the agent. Sphinx/agent-feed keep the full
+      // is the only thing that needs the agent. For the Opire agent feed, hash
+      // only the surfaced 'known' list (platform-wide counts churn as other
+      // people add/remove bounties - not our signal). Sphinx keeps the full
       // stripped hash (status changes there are meaningful).
       let canon = data.toString()
       try {
@@ -142,6 +144,8 @@ function signals() {
           canon = JSON.stringify(
             Object.keys(parsed.issues || {}).sort()
           )
+        } else if (f.endsWith('agent-feed-seen.json')) {
+          canon = JSON.stringify(parsed.known || [])
         } else {
           for (const k of ['lastSignal', 'lastRun', 'lastCheck', 'updated', 'ts', 'lastSeen', 'firstSeen']) {
             if (k in parsed) delete parsed[k]
