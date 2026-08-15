@@ -8,7 +8,12 @@ import fs from 'node:fs'
 
 const LOGINS = '/home/lemion/logins'
 const [, , channelId, msgIdArg, ...rest] = process.argv
-const text = rest.join(' ').trim()
+const text = rest
+  .join(' ')
+  .replace(/\\n/g, '\n') // CLI arg escapes -> real newlines (Discord renders \n literally otherwise)
+  .replace(/\\t/g, '\t')
+  .replace(/\\`/g, '`')
+  .trim()
 if (!channelId || !text) {
   console.error('usage: reply.mjs <channelId> [msgId] "<text>"')
   process.exit(1)
