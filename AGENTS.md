@@ -49,6 +49,20 @@ journalctl --user -u discord-bot -f       # logs
 curl -s http://127.0.0.1:8757/health      # -> ok
 ```
 
+## Slash commands (owner-only)
+
+- `/john status` — full rig report: agent pid, bridge, brain worker, honeygain,
+  watcher timers, jumble daemon, pending messages/requests, money, thread states.
+- `/john restart` — spawns a fresh `opencode run` (resume-prompt.txt) only if the
+  agent process is dead; reports already-alive otherwise.
+
+## Watchdog (autonomous recovery)
+
+`agent-watchdog.mjs` runs every 10 min via the `agent-watchdog.timer` systemd
+user timer. If the opencode agent is dead AND the bridge is up AND the last
+spawn was >15 min ago, it spawns a fresh run (log: /home/lemion/opencode-agent.log).
+No-op when the agent is alive.
+
 ## Contribution rules
 
 - Never commit tokens or secrets (logins file is outside the repo).

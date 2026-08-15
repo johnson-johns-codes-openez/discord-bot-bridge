@@ -8,10 +8,10 @@
 // - Logs every message to inbox.jsonl.
 // - Exposes a localhost-only HTTP API (127.0.0.1:8757): POST /msg {channelId, content}
 // Tokens/secrets are read at runtime from /home/lemion/logins. Never committed.
-import { Client, GatewayIntentBits, Partials } from 'discord.js'
+import { Client, GatewayIntentBits, Partials, SlashCommandBuilder } from 'discord.js'
 import fs from 'node:fs'
 import http from 'node:http'
-import { execSync } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 
 const LOGINS = '/home/lemion/logins'
 const INBOX = '/home/lemion/discord-bot/inbox.jsonl'
@@ -19,6 +19,9 @@ const AGENT_REQS = '/home/lemion/discord-bot/agent-requests.jsonl'
 const BRIEFING = '/home/lemion/discord-bot/briefing.md'
 const BRAIN_URL = 'https://discord-brain.johnson-johns-codes-openez.workers.dev/chat'
 const PORT = Number(process.env.BRIDGE_PORT || 8757)
+const OWNER_ID = '960791454379298817' // lemion._. - only they may control the bot
+const AGENT_LOG = '/home/lemion/opencode-agent.log'
+const RESUME_PROMPT = fs.readFileSync('/home/lemion/discord-bot/resume-prompt.txt', 'utf8').trim()
 
 function readKey(key) {
   const line = fs
@@ -111,6 +114,123 @@ async function askBrain(clean) {
 client.on('ready', () => {
   log(`logged in as ${client.user.tag} (id ${client.user.id})`)
   ping(`[discord-bot] ${client.user.tag} is ONLINE - @John or DM to talk to the agent`)
+  registerCommands().catch((e) => log('register commands err: ' + e.message))
+})
+
+// ---- Slash commands: /john status | /john restart (owner-gated) ----
+async function registerCommands() {
+  const app = client.application
+  const existing = await app.commands.fetch()
+  const want = {
+    john: new SlashCommandBuilder()
+      .setName('john')
+      .setDescription("John's status / restart (owner only)")
+      .addSubcommand((s) => s.setName('status').setDescription('Check whether John (the agent) is alive and how the rig is doing'))
+      .addSubcommand((s) => s.setName('restart').setDescription('Start John again if the agent died')),
+  }
+  for (const [name, builder] of Object.entries(want)) {
+    const cmd = builder.toJSON()
+    const found = existing.find((c) => c.name === name)
+    if (found) {
+      if (JSON.stringify(found.options) !== JSON.stringify(cmd.options)) {
+        await app.commands.edit(found.id, { options: cmd.options })
+        log(`updated slash command /${name}`)
+      }
+    } else {
+      await app.commands.create(cmd)
+      log(`registered slash command /${name}`)
+    }
+  }
+}
+
+function sh(cmd, fallback = 'n/a') {
+  try {
+    return execSync(cmd, { encoding: 'utf8', timeout: 8000 }).trim() || fallback
+  } catch {
+    return fallback
+  }
+}
+
+function agentPid() {
+  const out = sh(`pgrep -x opencode || true`)
+  const pids = out.split('\n').filter((p) => /^\d+$/.test(p.trim()))
+  return pids.length ? pids[0] : null
+}
+
+async function statusReport() {
+  const lines = []
+  const pid = agentPid()
+  lines.push(pid ? `🧠 John: ALIVE (pid ${pid})` : '🧠 John: DEAD - use /john restart to bring him back')
+  const bridge = sh(`curl -s -m 5 http://127.0.0.1:8757/health`)
+  lines.push(`🔌 Bridge bot: ${bridge === 'ok' ? 'ok' : 'DOWN (' + bridge + ')'}`)
+  const brain = sh(`curl -s -m 8 https://discord-brain.johnson-johns-codes-openez.workers.dev/health`)
+  lines.push(`🧠 Brain worker: ${brain.includes('"ok":true') ? 'ok' : 'down (' + brain.slice(0, 60) + ')'}`)
+  const hg = sh(`sudo -n docker ps --filter name=^honeygain$ --format {{.Status}} 2>/dev/null`)
+  lines.push(`🍯 Honeygain: ${hg.includes('Up') ? hg : 'DOWN (' + hg + ')'}`)
+  const timers = sh(`systemctl --user list-timers --no-pager | grep -E "lb-real-watch|sphinx-watch|agent-feed-watch|bounty-watcher" | awk '{for(i=1;i<=NF;i++){if($i ~ /^[0-9][0-9]:[0-9][0-9]:[0-9][0-9]$/){if(!f){f=$i}; l=$i}}; print f, l, $(NF-1)}'`)
+  for (const line of timers.split('\n')) {
+    const [nextT, lastT, unit] = line.trim().split(/\s+/)
+    if (unit) lines.push(`⏱ ${unit.replace('.timer', '')}: last ${lastT}, next ${nextT}`)
+  }
+  const jd = sh(`pgrep -f jumble-pr-watch.mjs || true`).split('\n').filter((p) => /^\d+$/.test(p.trim()))
+  lines.push(`🔎 jumble watch: ${jd.length ? 'running' : 'DOWN'}`)
+  const inbox = fs.readFileSync(INBOX, 'utf8').split('\n').filter(Boolean).length
+  const inboxMark = Number(fs.readFileSync('/home/lemion/discord-bot/.last-replied-line', 'utf8').trim() || 0)
+  lines.push(`📨 unhandled messages: ${Math.max(0, inbox - inboxMark)}`)
+  const reqs = fs.existsSync(AGENT_REQS) ? fs.readFileSync(AGENT_REQS, 'utf8').split('\n').filter(Boolean).length : 0
+  const reqMark = Number(fs.readFileSync('/home/lemion/discord-bot/.agent-request-count', 'utf8').trim() || 0)
+  lines.push(`⚙️ queued agent-requests: ${Math.max(0, reqs - reqMark)}`)
+  let money = '?'
+  try {
+    const m = fs.readFileSync('/home/lemion/bounties/STATE.md', 'utf8').match(/Money[^\n]*\$[0-9.]+/)
+    if (m) money = m[0].replace(/Money\s*/i, '')
+  } catch {
+    /* keep ? */
+  }
+  lines.push(`💰 ${money}`)
+  const threads = sh(`for i in "stakwork/sphinx-swarm 727" "stakwork/sphinx-swarm 728" "CodyTseng/jumble 846"; do set -- $i; printf "%s#%s=%s " "$1" "$2" "$(gh api repos/$1/issues/$2 --jq .state 2>/dev/null)"; done`, '')
+  lines.push(`🧵 threads: ${threads}`)
+  return lines.join('\n')
+}
+
+function startAgent() {
+  const logFd = fs.openSync(AGENT_LOG, 'a')
+  const child = spawn('/usr/bin/opencode', ['run', RESUME_PROMPT], {
+    detached: true,
+    stdio: ['ignore', logFd, logFd],
+  })
+  child.unref()
+  return child.pid
+}
+
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand() || interaction.commandName !== 'john') return
+  if (interaction.user.id !== OWNER_ID) {
+    await interaction.reply({ content: 'Nope — owner only 🤖', ephemeral: true })
+    return
+  }
+  const sub = interaction.options.getSubcommand()
+  await interaction.deferReply()
+  if (sub === 'status') {
+    const report = await statusReport()
+    await interaction.editReply(report.slice(0, 1900))
+    log('[/john status] served to ' + interaction.user.username)
+  } else if (sub === 'restart') {
+    const pid = agentPid()
+    if (pid) {
+      await interaction.editReply(`John is already alive (pid ${pid}) — nothing to do. Use /john status for the full picture.`)
+    } else {
+      const spawned = startAgent()
+      await new Promise((r) => setTimeout(r, 8000))
+      const now = agentPid()
+      await interaction.editReply(
+        now
+          ? `John was dead — spawned a fresh run (spawn pid ${spawned}); agent now up (pid ${now}). He will read STATE.md and resume the loop.`
+          : `Spawned opencode run (pid ${spawned}) but the process check doesn't see it yet — give it a minute, then /john status.`
+      )
+      log('[/john restart] agent respawned: ' + spawned)
+    }
+  }
 })
 
 client.on('messageCreate', async (msg) => {
