@@ -15,6 +15,7 @@
 //  - disk > 90% used or RAM < 300MB free                    -> VM trouble
 import fs from 'node:fs'
 import { execSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 
 const WAIT = Number(process.argv[2] || 1500)
 const POLL = 15
@@ -127,11 +128,12 @@ function signals() {
   const prevFeeds = st.feeds || {}
   for (const f of FEEDS) {
     try {
-      const m = fs.statSync(f).mtimeMs
-      if (prevFeeds[f] && m > prevFeeds[f] + 1000) {
-        hits.push(`feed file changed: ${f} - MUST DO: inspect new bounties and decide`)
+      const data = fs.readFileSync(f)
+      const hash = createHash('md5').update(data).digest('hex')
+      if (prevFeeds[f] && prevFeeds[f] !== hash) {
+        hits.push(`feed changed: ${f} - MUST DO: inspect new bounties and decide`)
       }
-      prevFeeds[f] = m
+      prevFeeds[f] = hash
     } catch {
       /* missing file - fine */
     }
