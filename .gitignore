@@ -3,3 +3,8 @@ inbox.jsonl
 .env
 logins
 *.log
+
+# runtime state (agent-side, not for the repo)
+agent-requests.jsonl
+.last-replied-line
+.agent-request-count
