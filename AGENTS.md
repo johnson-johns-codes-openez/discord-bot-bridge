@@ -41,7 +41,14 @@ with `Authorization: Bearer <brain-secret>` and body
 `{ messages: [{role, content}], briefing?: string }`.
 Returns `{ reply, needs_agent, agent_task, model }`.
 Models: `@cf/zai-org/glm-4.7-flash` → `@cf/meta/llama-4-scout-17b-16e-instruct`
-→ `@cf/google/gemma-4-26b-a4b-it` (fallback on empty/capacity errors).
+→ `@cf/moonshotai/kimi-k2.5` → `@cf/google/gemma-4-26b-a4b-it`
+(fallback on empty/capacity errors).
+`POST /vision` with `Authorization: Bearer <brain-secret>` and body
+`{ prompt, image }` (image = base64 PNG, <=4MB) → `{ text, model }` using
+`@cf/meta/llama-3.2-11b-vision-instruct` (license already accepted on the
+account via the `prompt:"agree"` flow — do not re-agree). Requires at least
+a system + user text message; image goes in the top-level `image` field as a
+data: URL (image_url content parts are rejected by the binding).
 Source: `/home/lemion/workers/discord-brain` (wrangler.jsonc, src/index.js).
 Brain secret lives in the logins file keyed `brain-secret:` — read at runtime,
 never commit, never echo.
