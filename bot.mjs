@@ -415,6 +415,35 @@ const server = http.createServer((req, res) => {
     })
     return
   }
+  if (req.method === 'POST' && req.url === '/file') {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    req.on('end', async () => {
+      try {
+        const { channelId, path, caption } = JSON.parse(body)
+        if (!channelId || !path) {
+          res.statusCode = 400
+          res.end('need channelId + path')
+          return
+        }
+        if (!fs.existsSync(path)) {
+          res.statusCode = 400
+          res.end('file not found: ' + path)
+          return
+        }
+        const ch = await client.channels.fetch(channelId)
+        await ch.send({
+          content: caption ? String(caption).slice(0, 1900) : undefined,
+          files: [path],
+        })
+        res.end('sent')
+      } catch (e) {
+        res.statusCode = 500
+        res.end(String(e.message))
+      }
+    })
+    return
+  }
   if (req.method === 'POST' && req.url === '/msg') {
     let body = ''
     req.on('data', (c) => (body += c))

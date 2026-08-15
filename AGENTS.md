@@ -20,6 +20,7 @@ earnings agent "John" (Johnson John Codes Openez) that runs on a VM.
   - Localhost HTTP API on 127.0.0.1:8757 (VM-local):
     - `POST /msg {channelId, content}` — send a text message as the bot
     - `POST /img {channelId, image, caption?}` — send an image as the bot
+    - `POST /file {channelId, path, caption?}` — send any file as the bot
     - `GET /health` — health check
 - `reply.mjs` — CLI to reply from the bot:
   `node reply.mjs <channelId> [msgId] "<text>"` (threaded if msgId given).
