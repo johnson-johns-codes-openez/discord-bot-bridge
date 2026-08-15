@@ -326,8 +326,14 @@ client.on('messageCreate', async (msg) => {
   }
 
   try {
-    if (brain && brain.reply) {
-      await msg.reply(String(brain.reply).slice(0, 1900))
+    let replyText = brain && brain.reply ? String(brain.reply) : ''
+    // Last line of defense: never post JSON-ish model output into the channel
+    if (/^\s*[{[]/.test(replyText) || /"reply"\s*:/.test(replyText)) {
+      replyText = ''
+      log('sanitized JSON-like brain reply from ' + msg.author.username)
+    }
+    if (replyText) {
+      await msg.reply(replyText.slice(0, 1900))
     } else {
       await msg.reply("⚠️ John's assistant is having a moment — I've flagged this for John to look at on his next poll.")
     }
