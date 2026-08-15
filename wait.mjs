@@ -129,7 +129,18 @@ function signals() {
   for (const f of FEEDS) {
     try {
       const data = fs.readFileSync(f)
-      const hash = createHash('md5').update(data).digest('hex')
+      // Hash content, ignoring timestamp bookkeeping that changes every write
+      let canon = data.toString()
+      try {
+        const parsed = JSON.parse(canon)
+        for (const k of ['lastSignal', 'lastRun', 'lastCheck', 'updated', 'ts']) {
+          if (k in parsed) delete parsed[k]
+        }
+        canon = JSON.stringify(parsed)
+      } catch {
+        /* not JSON - hash raw */
+      }
+      const hash = createHash('md5').update(canon).digest('hex')
       if (prevFeeds[f] && prevFeeds[f] !== hash) {
         hits.push(`feed changed: ${f} - MUST DO: inspect new bounties and decide`)
       }
