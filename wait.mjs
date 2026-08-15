@@ -6,7 +6,8 @@
 //
 // Signals checked:
 //  - agent-requests.jsonl beyond .agent-request-count      -> real action queued
-//  - inbox.jsonl beyond .last-replied-line                  -> unhandled messages
+//  - inbox.jsonl beyond .last-replied-line (brain FAILED to answer, i.e. the
+//    bot could not auto-answer and John must respond manually)
 //  - watcher seen-file mtimes (lb/sphinx/agent-feed/jumble) -> feed activity
 //  - GitHub thread states (#727 #728 sphinx-swarm, #846 jumble) -> status change
 //  - discord-bot bridge health (127.0.0.1:8757)             -> bridge down
@@ -99,9 +100,27 @@ function signals() {
   const inbox = lineCount(INBOX)
   const inboxMark = readMark(INBOX_MARK)
   if (inbox > inboxMark) {
-    hits.push(
-      `unhandled discord message(s): ${inbox - inboxMark} new since line ${inboxMark} - MUST DO: reply to each (reply.mjs), then bump .last-replied-line to ${inbox}`
-    )
+    // Only wake the agent for messages the BRAIN could not auto-answer
+    // (brainReply null / brainErr). Chat the brain handled needs no agent.
+    const lines = fs
+      .readFileSync(INBOX, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .slice(inboxMark)
+    const unattended = lines.filter((l) => {
+      try {
+        const e = JSON.parse(l)
+        return e.brainReply === null || e.brainReply === undefined || e.brainErr
+      } catch {
+        return true
+      }
+    })
+    if (unattended.length) {
+      const last = JSON.parse(unattended[unattended.length - 1])
+      hits.push(
+        `brain could not answer ${unattended.length} message(s) (line ${inboxMark}+, last by ${last.author}: "${(last.content || '').slice(0, 80)}") - MUST DO: reply manually, then bump .last-replied-line to ${inbox}`
+      )
+    }
   }
 
   const st = readJson(STATE_FILE) || {}

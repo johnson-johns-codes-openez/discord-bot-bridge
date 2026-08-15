@@ -94,21 +94,36 @@ function quickAnswer(content) {
 }
 
 // Call the brain worker. Returns { reply, needs_agent, agent_task }.
+// Retries transient edge 404/5xx (workers.dev deploy propagation) with backoff.
 async function askBrain(clean) {
-  const res = await fetch(BRAIN_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: 'Bearer ' + BRAIN_SECRET,
-    },
-    body: JSON.stringify({
-      messages: [{ role: 'user', content: clean }],
-      briefing: readBriefing(),
-    }),
-    signal: AbortSignal.timeout(60000),
-  })
-  if (!res.ok) throw new Error('brain http ' + res.status)
-  return res.json()
+  let lastErr = null
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(BRAIN_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer ' + BRAIN_SECRET,
+        },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: clean }],
+          briefing: readBriefing(),
+        }),
+        signal: AbortSignal.timeout(60000),
+      })
+      if (res.status === 404 || res.status >= 500) {
+        lastErr = new Error('brain http ' + res.status)
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 4000 * attempt))
+        continue
+      }
+      if (!res.ok) throw new Error('brain http ' + res.status)
+      return res.json()
+    } catch (e) {
+      lastErr = e
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 4000 * attempt))
+    }
+  }
+  throw lastErr || new Error('brain unreachable')
 }
 
 client.on('ready', () => {

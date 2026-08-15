@@ -21,9 +21,10 @@ earnings agent "John" (Johnson John Codes Openez) that runs on a VM.
 - `reply.mjs` — CLI to reply from the bot:
   `node reply.mjs <channelId> [msgId] "<text>"` (threaded if msgId given).
 - `wait.mjs` — signal-aware wait for the agent loop (replaces plain sleep):
-  polls for new agent-requests/inbox lines, watcher feed changes, GitHub
-  thread state changes (#727/#728/#846), bridge health, honeygain container,
-  disk/RAM. Prints `SIGNAL: ...` + exit 3 on activity, `TIMEOUT` + exit 0.
+  polls for queued agent-requests, inbox lines the brain could NOT auto-answer,
+  watcher feed changes, GitHub thread state changes (#727/#728/#846), bridge
+  health, honeygain container, disk/RAM. Prints `SIGNAL: ...` + exit 3 on
+  activity, `TIMEOUT` + exit 0. Chat the brain handled does NOT wake the agent.
 - `briefing.md` — secret-free operating brief, refreshed by the agent; sent to
   the brain on every request.
 - Marker files (agent-side, don't commit): `.last-replied-line` (inbox lines
