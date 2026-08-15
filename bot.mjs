@@ -160,7 +160,31 @@ client.on('ready', () => {
   log(`logged in as ${client.user.tag} (id ${client.user.id})`)
   ping(`[discord-bot] ${client.user.tag} is ONLINE - @John or DM to talk to the agent`)
   registerCommands().catch((e) => log('register commands err: ' + e.message))
+  scheduleWake()
 })
+
+// ---- Daily 9AM local wake-up message (owner asked for it through the bot) ----
+const WAKE_CHANNEL = '1538191225495097447' // owner DM
+const WAKE_USER = '<@960791454379298817>'
+const WAKE_HOUR = 9
+function scheduleWake() {
+  const now = new Date()
+  const next = new Date(now)
+  next.setHours(WAKE_HOUR, 0, 0, 0)
+  if (next <= now) next.setDate(next.getDate() + 1)
+  const ms = next - now
+  log(`[wake] next wake-up scheduled for ${next.toString()} (in ~${Math.round(ms / 60000)} min)`)
+  setTimeout(async () => {
+    try {
+      const ch = await client.channels.fetch(WAKE_CHANNEL)
+      await ch.send(`${WAKE_USER} ☀️ Morning wake-up call — 9AM local. John's on duty.`)
+      log('[wake] wake-up message sent')
+    } catch (e) {
+      log('[wake] send failed: ' + e.message)
+    }
+    scheduleWake()
+  }, ms)
+}
 
 // ---- Slash commands: /john status | /john restart (owner-gated) ----
 async function registerCommands() {
@@ -346,19 +370,22 @@ client.on('messageCreate', async (msg) => {
   })
   log(`message from ${msg.author.username}: ${clean.slice(0, 60)}`)
 
-  if (brain && brain.needs_agent) {
-    // Real action requested -> queue it for the agent + notify.
+  // Real action requested -> queue it for the agent + notify.
+  // Heuristic backstop: scheduling/reminder/wake-up asks must reach John even
+  // if the brain classifies them as chat.
+  const WANT_AGENT = /wake|alarm|remind|schedule|timer|9 ?a\.?m/i
+  if ((brain && brain.needs_agent) || WANT_AGENT.test(clean)) {
     append(AGENT_REQS, {
       ts: Date.now(),
       author: msg.author.username,
       authorId: msg.author.id,
       channelId: msg.channel.id,
       msgId: msg.id,
-      task: brain.agent_task || clean.slice(0, 200),
+      task: brain && brain.agent_task ? brain.agent_task : 'scheduling/reminder request: ' + clean.slice(0, 120),
       content: clean,
       attachments: atts,
     })
-    ping(`[agent-request] from ${msg.author.username}: ${(brain.agent_task || clean).slice(0, 120)} - John must act`)
+    ping(`[agent-request] from ${msg.author.username}: ${(brain && brain.agent_task || clean).slice(0, 120)} - John must act`)
   }
 
   try {
