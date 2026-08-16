@@ -8,7 +8,7 @@
 // - Logs every message to inbox.jsonl.
 // - Exposes a localhost-only HTTP API (127.0.0.1:8757): POST /msg {channelId, content}
 // Tokens/secrets are read at runtime from /home/lemion/logins. Never committed.
-import { Client, GatewayIntentBits, Partials, SlashCommandBuilder } from 'discord.js'
+import { Client, GatewayIntentBits, Partials, SlashCommandBuilder, ActivityType } from 'discord.js'
 import fs from 'node:fs'
 import http from 'node:http'
 import { execSync, spawn } from 'node:child_process'
@@ -158,6 +158,7 @@ async function askBrain(clean) {
 
 client.on('ready', () => {
   log(`logged in as ${client.user.tag} (id ${client.user.id})`)
+  setBusy(false)
   ping(`[discord-bot] ${client.user.tag} is ONLINE - @John or DM to talk to the agent`)
   registerCommands().catch((e) => log('register commands err: ' + e.message))
   scheduleWake()
@@ -201,6 +202,9 @@ async function registerCommands() {
     screenshot: new SlashCommandBuilder()
       .setName('screenshot')
       .setDescription('Grab a screenshot of the VM desktop (owner only)'),
+    bounties: new SlashCommandBuilder()
+      .setName('bounties')
+      .setDescription('Current bounty progress / state report (owner only)'),
   }
   for (const [name, builder] of Object.entries(want)) {
     const cmd = builder.toJSON()
@@ -277,6 +281,18 @@ function startAgent() {
   return child.pid
 }
 
+// Presence: idle activity while a request is being processed, calm activity otherwise.
+function setBusy(busy) {
+  try {
+    client.user.setStatus(busy ? 'idle' : 'online')
+    client.user.setActivity(
+      busy ? { name: 'your request', type: ActivityType.Watching } : { name: 'bounty feeds', type: ActivityType.Watching }
+    )
+  } catch {
+    /* presence is best-effort */
+  }
+}
+
 // Grab a VM desktop screenshot. The desktop runs KDE Plasma on Wayland, so we
 // need spectacle with the right session env; fall back to scrot (Xwayland root)
 // if spectacle is unavailable.
@@ -297,9 +313,35 @@ function takeScreenshot() {
   return null
 }
 
+// Current bounty/state report for /bounties (owner-only command).
+async function bountiesReport() {
+  const lines = []
+  let state = {}
+  try {
+    const raw = fs.readFileSync('/home/lemion/bounties/STATE.md', 'utf8')
+    const money = raw.match(/Money[^\n]*\$[0-9.]+/)
+    lines.push(`💰 ${money ? money[0].replace(/Money\s*/i, '') : 'n/a'}`)
+    const lb = raw.match(/Lightning Bounties[^\n]*/i)
+    if (lb) lines.push(lb[0])
+  } catch {
+    lines.push('💰 state file unreadable')
+  }
+  const threads = sh(`for i in "stakwork/sphinx-swarm 727" "stakwork/sphinx-swarm 728" "CodyTseng/jumble 846" "CodyTseng/jumble 112"; do set -- $i; printf "%s#%s=%s " "$1" "$2" "$(gh api repos/$1/issues/$2 --jq .state 2>/dev/null)"; done`, '')
+  lines.push(`🧵 threads: ${threads}`)
+  // Pending big-ticket items (hardcoded view of the current pipeline)
+  lines.push('📌 sphinx #727 (250k sats stale bounty, documented) — ' + (threads.includes('#727=open') ? 'OPEN, awaiting Evan' : 'CHANGED'))
+  lines.push('📌 sphinx #728 (heartbeat PR) — ' + (threads.includes('#728=open') ? 'OPEN, awaiting Evan' : 'CHANGED'))
+  lines.push('📌 jumble #846 (sync-follow-list PR, ~21 sats) — ' + (threads.includes('#846=open') ? 'OPEN, awaiting merge' : 'CHANGED'))
+  const hg = sh(`sudo -n docker ps --filter name=^honeygain$ --format {{.Status}} 2>/dev/null`)
+  lines.push(`🍯 Honeygain: ${hg.includes('Up') ? hg : 'DOWN (' + hg + ')'}`)
+  const next = sh(`systemctl --user list-timers --no-pager | grep -E "bounty-watcher|jumble-pr-watch" | awk '{print $(NF-1)}' | head -2`)
+  if (next) lines.push(`⏱ watchers: ${next.replace(/\n/g, ', ')}`)
+  return lines.join('\n')
+}
+
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return
-  if (!['john', 'screenshot'].includes(interaction.commandName)) return
+  if (!['john', 'screenshot', 'bounties'].includes(interaction.commandName)) return
   if (interaction.user.id !== OWNER_ID) {
     await interaction.reply({ content: 'Nope — owner only 🤖', ephemeral: true })
     return
@@ -336,6 +378,10 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.channel.send({ files: [shot] }).catch(() => {})
     await interaction.editReply(`📸 VM desktop captured (${Math.round(fs.statSync(shot).size / 1024)} KB).`)
     log('[/screenshot] sent to ' + interaction.user.username)
+  } else if (interaction.commandName === 'bounties') {
+    const report = await bountiesReport()
+    await interaction.editReply(report.slice(0, 1900))
+    log('[/bounties] served to ' + interaction.user.username)
   }
 })
 
@@ -380,6 +426,7 @@ client.on('messageCreate', async (msg) => {
     }
   }
   startTyping()
+  setBusy(true)
   const atts = await captureAttachments(msg.attachments)
   const attNote = atts.length
     ? ' [files attached: ' + atts.map((a) => a.name + (a.text ? ` (${a.text.length} chars)` : ' (binary)')).join(', ') + ']'
@@ -391,6 +438,7 @@ client.on('messageCreate', async (msg) => {
     log('brain err: ' + e.message)
     brain = null
   }
+  setBusy(false)
 
   append(INBOX, {
     ts: Date.now(),
