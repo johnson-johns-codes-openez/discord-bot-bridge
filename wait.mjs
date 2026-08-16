@@ -174,7 +174,7 @@ function signals() {
   }
 
   try {
-    const h = execSync('curl -s -m 5 http://127.0.0.1:8757/health', { encoding: 'utf8' }).trim()
+    const h = execSync('curl -s -m 25 http://127.0.0.1:8757/health', { encoding: 'utf8' }).trim()
     if (h !== 'ok') hits.push(`discord bridge /health -> "${h}" - MUST DO: systemctl --user restart discord-bot`)
   } catch {
     hits.push(`discord bridge /health unreachable - MUST DO: systemctl --user restart discord-bot`)
