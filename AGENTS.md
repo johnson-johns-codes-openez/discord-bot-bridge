@@ -24,6 +24,9 @@ earnings agent "John" (Johnson John Codes Openez) that runs on a VM.
     - `GET /health` — health check
 - `reply.mjs` — CLI to reply from the bot:
   `node reply.mjs <channelId> [msgId] "<text>"` (threaded if msgId given).
+- `email.mjs` (in browser-tools) — Zoho Mail CLI: `list [count]`, `read <n|match>`,
+  `reply <n|match> "<body>"` via CDP 9333 + OCR fallback (tesseract). Skill doc at
+  `~/.config/opencode/skills/email/SKILL.md`, repo: johnson-johns-codes-openez/email-bridge.
 - `wait.mjs` — signal-aware wait for the agent loop (replaces plain sleep):
   polls for queued agent-requests, inbox lines the brain could NOT auto-answer,
   watcher feed changes, GitHub thread state changes (#727/#728/#846), bridge
@@ -67,6 +70,10 @@ curl -s http://127.0.0.1:8757/health      # -> ok
   watcher timers, jumble daemon, pending messages/requests, money, thread states.
 - `/john restart` — spawns a fresh `opencode run` (resume-prompt.txt) only if the
   agent process is dead; reports already-alive otherwise.
+- `/screenshot` — desktop screenshot (spectacle → scrot fallback).
+- `/bounties` — live money/threads/honeygain report from STATE.md.
+- `/emails` — latest Zoho inbox via `/home/lemion/browser-tools/email.mjs list 8`
+  (90s exec timeout; needs the persistent Chromium on CDP 9333).
 
 ## Watchdog (autonomous recovery)
 

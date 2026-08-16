@@ -205,6 +205,9 @@ async function registerCommands() {
     bounties: new SlashCommandBuilder()
       .setName('bounties')
       .setDescription('Current bounty progress / state report (owner only)'),
+    emails: new SlashCommandBuilder()
+      .setName('emails')
+      .setDescription('Latest Zoho Mail inbox messages (owner only)'),
   }
   for (const [name, builder] of Object.entries(want)) {
     const cmd = builder.toJSON()
@@ -341,7 +344,7 @@ async function bountiesReport() {
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return
-  if (!['john', 'screenshot', 'bounties'].includes(interaction.commandName)) return
+  if (!['john', 'screenshot', 'bounties', 'emails'].includes(interaction.commandName)) return
   if (interaction.user.id !== OWNER_ID) {
     await interaction.reply({ content: 'Nope — owner only 🤖', ephemeral: true })
     return
@@ -382,6 +385,19 @@ client.on('interactionCreate', async (interaction) => {
     const report = await bountiesReport()
     await interaction.editReply(report.slice(0, 1900))
     log('[/bounties] served to ' + interaction.user.username)
+  } else if (interaction.commandName === 'emails') {
+    let out = ''
+    try {
+      out = execSync('node /home/lemion/browser-tools/email.mjs list 8', {
+        encoding: 'utf8',
+        timeout: 90000,
+      }).trim()
+    } catch (e) {
+      out = 'email check failed: ' + e.message
+    }
+    if (!out) out = '(empty inbox)'
+    await interaction.editReply(`📬 Inbox (latest):\n\`\`\`\n${out.slice(0, 1800)}\n\`\`\``)
+    log('[/emails] served to ' + interaction.user.username)
   }
 })
 
