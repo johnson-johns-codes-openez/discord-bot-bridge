@@ -198,6 +198,9 @@ async function registerCommands() {
       .setDescription("John's status / restart (owner only)")
       .addSubcommand((s) => s.setName('status').setDescription('Check whether John (the agent) is alive and how the rig is doing'))
       .addSubcommand((s) => s.setName('restart').setDescription('Start John again if the agent died')),
+    screenshot: new SlashCommandBuilder()
+      .setName('screenshot')
+      .setDescription('Grab a screenshot of the VM desktop (owner only)'),
   }
   for (const [name, builder] of Object.entries(want)) {
     const cmd = builder.toJSON()
@@ -274,14 +277,36 @@ function startAgent() {
   return child.pid
 }
 
+// Grab a VM desktop screenshot. The desktop runs KDE Plasma on Wayland, so we
+// need spectacle with the right session env; fall back to scrot (Xwayland root)
+// if spectacle is unavailable.
+function takeScreenshot() {
+  const out = `/tmp/opencode/screenshot-${Date.now()}.png`
+  const attempts = [
+    `XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 spectacle -b -o ${out}`,
+    `XDG_RUNTIME_DIR=/run/user/1000 DISPLAY=:1 scrot -o ${out}`,
+  ]
+  for (const cmd of attempts) {
+    try {
+      execSync(cmd, { timeout: 20000, stdio: 'pipe' })
+      if (fs.existsSync(out) && fs.statSync(out).size > 20000) return out
+    } catch {
+      /* try next */
+    }
+  }
+  return null
+}
+
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand() || interaction.commandName !== 'john') return
+  if (!interaction.isChatInputCommand()) return
+  if (!['john', 'screenshot'].includes(interaction.commandName)) return
   if (interaction.user.id !== OWNER_ID) {
     await interaction.reply({ content: 'Nope — owner only 🤖', ephemeral: true })
     return
   }
-  const sub = interaction.options.getSubcommand()
   await interaction.deferReply()
+  if (interaction.commandName === 'john') {
+  const sub = interaction.options.getSubcommand()
   if (sub === 'status') {
     const report = await statusReport()
     await interaction.editReply(report.slice(0, 1900))
@@ -301,6 +326,16 @@ client.on('interactionCreate', async (interaction) => {
       )
       log('[/john restart] agent respawned: ' + spawned)
     }
+  }
+  } else if (interaction.commandName === 'screenshot') {
+    const shot = takeScreenshot()
+    if (!shot) {
+      await interaction.editReply('Screenshot failed — spectacle/scrot both errored. Check the desktop session.')
+      return
+    }
+    await interaction.channel.send({ files: [shot] }).catch(() => {})
+    await interaction.editReply(`📸 VM desktop captured (${Math.round(fs.statSync(shot).size / 1024)} KB).`)
+    log('[/screenshot] sent to ' + interaction.user.username)
   }
 })
 
